@@ -5,17 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Neon Kinetic Particle System</title>
     <style>
-        :root { --neon-cyan: #00f2ff; --neon-pink: #ff007f; }
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: sans-serif; }
         canvas { display: block; }
-        
+
         #ui-layer {
             position: absolute;
             top: 20px;
             left: 20px;
             color: white;
-            pointer-events: none;
-            text-shadow: 0 0 10px rgba(0,242,255,0.8);
+            z-index: 10;
         }
 
         #webcam-container {
@@ -25,12 +23,10 @@
             width: 220px;
             height: 165px;
             border-radius: 15px;
-            border: 2px solid var(--neon-cyan);
-            box-shadow: 0 0 20px rgba(0, 242, 255, 0.4);
+            border: 2px solid #00f2ff;
             overflow: hidden;
             transform: scaleX(-1);
-            background: #111;
-            z-index: 100;
+            z-index: 10;
         }
 
         #webcam {
@@ -39,315 +35,166 @@
             object-fit: cover;
         }
 
-        .status {
-            font-size: 12px;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            opacity: 0.7;
-        }
+        canvas { position: fixed; top: 0; left: 0; }
     </style>
 </head>
 <body>
 
-    <div id="ui-layer">
-        <div class="status">Neural Engine Active</div>
-        <div id="gesture-name" style="font-size: 24px; color: var(--neon-cyan);">INITIALIZING...</div>
-    </div>
+<div id="ui-layer">
+    <div>Neural Engine Active</div>
+    <div id="gesture-name">INITIALIZING...</div>
+</div>
 
-    <div id="webcam-container">
-        <video id="webcam" autoplay playsinline></video>
-    </div>
+<div id="webcam-container">
+    <video id="webcam" autoplay playsinline></video>
+</div>
 
-    <canvas id="canvas"></canvas>
+<canvas id="canvas"></canvas>
 
-    <script type="module">
-        import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
+<script type="module">
+import { HandLandmarker, FilesetResolver } 
+from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
 
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d', { alpha: false });
-        const video = document.getElementById('webcam');
-        const gestureText = document.getElementById('gesture-name');
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
-        let handLandmarker;
-        let lastVideoTime = -1;
-        let lastDetectionTime = 0;
-        
-        const PARTICLE_COUNT = 3000;
-        const particles = [];
-        const bokehCircles = [];
-        let targets = [];
-        let currentGesture = "NONE";
-        let handZ = 0; // For zoom effect
-        
-        // Configuration
-        const config = {
-            friction: 0.88,
-            ease: 0.12,
-            detectionThrottle: 45, // ms
-            colors: ['#00f2ff', '#0072ff', '#00d4ff', '#ffffff']
-        };
+const video = document.getElementById("webcam");
+const gestureText = document.getElementById("gesture-name");
 
-        async function init() {
-            resize();
-            createParticles();
-            createBokeh();
-            
-            const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
-            handLandmarker = await HandLandmarker.createFromOptions(vision, {
-                baseOptions: {
-                    modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
-                    delegate: "GPU"
-                },
-                runningMode: "VIDEO",
-                numHands: 1
-            });
+let handLandmarker;
+let lastTime = 0;
 
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-            video.srcObject = stream;
-            
-            window.addEventListener('resize', resize);
-            requestAnimationFrame(render);
-        }
+const PARTICLES = 1200;
+const particles = [];
+let targets = [];
 
-        class Particle {
-            constructor() {
-                this.x = Math.random() * canvas.width;
-                this.y = Math.random() * canvas.height;
-                this.vx = 0;
-                this.vy = 0;
-                this.tx = this.x;
-                this.ty = this.y;
-                this.size = Math.random() * 1.5 + 0.5;
-                this.color = config.colors[Math.floor(Math.random() * config.colors.length)];
-            }
+function resize(){
+    canvas.width = innerWidth;
+    canvas.height = innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
 
-            update(scale) {
-                // Organic spring physics
-                const dx = (this.tx - canvas.width / 2) * scale + canvas.width / 2;
-                const dy = (this.ty - canvas.height / 2) * scale + canvas.height / 2;
-                
-                let ax = (dx - this.x) * config.ease;
-                let ay = (dy - this.y) * config.ease;
-                
-                this.vx += ax;
-                this.vy += ay;
-                this.vx *= config.friction;
-                this.vy *= config.friction;
-                
-                this.x += this.vx;
-                this.y += this.vy;
-            }
+class P {
+    constructor(){
+        this.x = Math.random()*canvas.width;
+        this.y = Math.random()*canvas.height;
+        this.vx = 0;
+        this.vy = 0;
+        this.tx = this.x;
+        this.ty = this.y;
+    }
+    update(){
+        this.vx += (this.tx - this.x)*0.05;
+        this.vy += (this.ty - this.y)*0.05;
+        this.vx *= 0.85;
+        this.vy *= 0.85;
+        this.x += this.vx;
+        this.y += this.vy;
+    }
+    draw(){
+        ctx.fillStyle = "#00f2ff";
+        ctx.fillRect(this.x,this.y,2,2);
+    }
+}
 
-            draw() {
-                ctx.fillStyle = this.color;
-                ctx.fillRect(this.x, this.y, this.size, this.size);
-            }
-        }
+for(let i=0;i<PARTICLES;i++) particles.push(new P());
 
-        function createParticles() {
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                particles.push(new Particle());
-            }
-            generateRandomCloud();
-        }
+function setShape(pts){
+    particles.forEach((p,i)=>{
+        const pt = pts[i % pts.length];
+        p.tx = pt.x + canvas.width/2;
+        p.ty = pt.y + canvas.height/2;
+    });
+}
 
-        function createBokeh() {
-            for (let i = 0; i < 15; i++) {
-                bokehCircles.push({
-                    x: Math.random() * canvas.width,
-                    y: Math.random() * canvas.height,
-                    r: Math.random() * 100 + 50,
-                    v: Math.random() * 0.5 + 0.2
-                });
-            }
-        }
+function heart(){
+    let pts=[];
+    for(let i=0;i<PARTICLES;i++){
+        let t=i/PARTICLES*Math.PI*2;
+        pts.push({
+            x:16*Math.pow(Math.sin(t),3)*10,
+            y:- (13*Math.cos(t)-5*Math.cos(2*t))*10
+        });
+    }
+    setShape(pts);
+}
 
-        // --- Parametric Shape Generators ---
+function cloud(){
+    let pts=[];
+    for(let i=0;i<PARTICLES;i++){
+        pts.push({
+            x:(Math.random()-0.5)*400,
+            y:(Math.random()-0.5)*400
+        });
+    }
+    setShape(pts);
+}
 
-        function generateHeart() {
-            const pts = [];
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                const t = (i / PARTICLE_COUNT) * Math.PI * 2;
-                const x = 16 * Math.pow(Math.sin(t), 3);
-                const y = -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
-                pts.push({ x: x * 18, y: y * 18 });
-            }
-            applyTargets(pts);
-        }
+async function init(){
 
-        function generateSaturn() {
-            const pts = [];
-            const sphereCount = Math.floor(PARTICLE_COUNT * 0.65);
-            const ringCount = PARTICLE_COUNT - sphereCount;
+    // CAMERA FIX
+    const stream = await navigator.mediaDevices.getUserMedia({video:true});
+    video.srcObject = stream;
 
-            // Sphere (Planet)
-            for (let i = 0; i < sphereCount; i++) {
-                const phi = Math.acos(-1 + (2 * i) / sphereCount);
-                const theta = Math.sqrt(sphereCount * Math.PI) * phi;
-                pts.push({
-                    x: Math.cos(theta) * Math.sin(phi) * 150,
-                    y: Math.cos(phi) * 150
-                });
-            }
-            // Ring (Tilted)
-            for (let i = 0; i < ringCount; i++) {
-                const angle = (i / ringCount) * Math.PI * 2;
-                const radius = 220 + Math.random() * 60;
-                const rx = Math.cos(angle) * radius;
-                const ry = Math.sin(angle) * radius * 0.3; // Flattened
-                // Rotate ring 25 degrees
-                const rot = -0.4;
-                pts.push({
-                    x: rx * Math.cos(rot) - ry * Math.sin(rot),
-                    y: rx * Math.sin(rot) + ry * Math.cos(rot)
-                });
-            }
-            applyTargets(pts);
-        }
+    await new Promise(res=>{
+        video.onloadeddata = ()=>res();
+    });
 
-        function generateText(str) {
-            const pts = [];
-            const charWidth = 100;
-            const startX = -((str.length * charWidth) / 2);
-            const pointsPerChar = Math.floor(PARTICLE_COUNT / str.length);
+    // MEDIA PIPE LOAD
+    const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
+    );
 
-            const getLetter = (char, ox) => {
-                const lpts = [];
-                const addL = (x1, y1, x2, y2, n) => {
-                    for(let i=0; i<n; i++) lpts.push({x: ox + x1 + (x2-x1)*(i/n), y: y1 + (y2-y1)*(i/n)});
-                };
-                const addC = (cx, cy, r, s, e, n) => {
-                    for(let i=0; i<n; i++) {
-                        const a = s + (e-s)*(i/n);
-                        lpts.push({x: ox + cx + Math.cos(a)*r, y: cy + Math.sin(a)*r});
-                    }
-                };
+    handLandmarker = await HandLandmarker.createFromOptions(vision,{
+        baseOptions:{
+            modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+        },
+        runningMode:"VIDEO",
+        numHands:1
+    });
 
-                if (char === 'I') addL(0, -80, 0, 80, pointsPerChar);
-                if (char === 'L') { addL(-40, -80, -40, 80, pointsPerChar/2); addL(-40, 80, 20, 80, pointsPerChar/2); }
-                if (char === 'O') addC(0, 0, 60, 0, Math.PI*2, pointsPerChar);
-                if (char === 'V') { addL(-40, -80, 0, 80, pointsPerChar/2); addL(0, 80, 40, -80, pointsPerChar/2); }
-                if (char === 'E') { addL(-30, -80, -30, 80, pointsPerChar/4); addL(-30, -80, 30, -80, pointsPerChar/4); addL(-30, 0, 10, 0, pointsPerChar/4); addL(-30, 80, 30, 80, pointsPerChar/4); }
-                if (char === 'Y') { addL(-40, -80, 0, 0, pointsPerChar/3); addL(40, -80, 0, 0, pointsPerChar/3); addL(0, 0, 0, 80, pointsPerChar/3); }
-                if (char === 'U') { addL(-40, -80, -40, 40, pointsPerChar/3); addC(0, 40, 40, 0, Math.PI, pointsPerChar/3); addL(40, 40, 40, -80, pointsPerChar/3); }
-                if (char === 'S') { addC(0, -35, 35, Math.PI*1.5, Math.PI*3, pointsPerChar/2); addC(0, 35, 35, Math.PI*0.5, Math.PI*2.5, pointsPerChar/2); }
-                
-                return lpts;
-            };
+    requestAnimationFrame(loop);
+}
 
-            str.split('').forEach((c, i) => pts.push(...getLetter(c, startX + i * charWidth)));
-            applyTargets(pts);
-        }
+function detect(){
+    if(!handLandmarker) return;
+    if(video.readyState < 2) return;
 
-        function generateRandomCloud() {
-            const pts = [];
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                pts.push({ x: (Math.random() - 0.5) * 600, y: (Math.random() - 0.5) * 600 });
-            }
-            applyTargets(pts);
-        }
+    const now = performance.now();
+    if(now - lastTime < 50) return;
+    lastTime = now;
 
-        function applyTargets(pts) {
-            particles.forEach((p, i) => {
-                const target = pts[i % pts.length];
-                p.tx = target.x + canvas.width / 2;
-                p.ty = target.y + canvas.height / 2;
-            });
-        }
+    const res = handLandmarker.detectForVideo(video, now);
 
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
+    if(res.landmarks && res.landmarks.length>0){
+        gestureText.innerText="HAND DETECTED";
+        heart();
+    } else {
+        gestureText.innerText="NO HAND";
+        cloud();
+    }
+}
 
-        async function detect() {
-            const now = performance.now();
-            if (now - lastDetectionTime < config.detectionThrottle) return;
-            lastDetectionTime = now;
+function loop(){
+    detect();
 
-            if (video.currentTime !== lastVideoTime) {
-                lastVideoTime = video.currentTime;
-                const results = handLandmarker.detectForVideo(video, now);
-                
-                if (results.landmarks && results.landmarks.length > 0) {
-                    processGesture(results.landmarks[0]);
-                    handZ = results.landmarks[0][0].z; // Wrist Z for depth
-                } else {
-                    if(currentGesture !== "NONE") {
-                        currentGesture = "NONE";
-                        gestureText.innerText = "WAITING...";
-                        generateRandomCloud();
-                    }
-                }
-            }
-        }
+    ctx.fillStyle="rgba(0,0,0,0.2)";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
 
-        function processGesture(landmarks) {
-            // Simple finger tracking: compare tip Y to pip Y
-            // Landmarks: 8(Index), 12(Middle), 16(Ring), 20(Pinky)
-            const fingers = [8, 12, 16, 20].map(idx => landmarks[idx].y < landmarks[idx-2].y);
-            const count = fingers.filter(Boolean).length;
-            
-            let newGesture = "NONE";
-            if (count >= 4) newGesture = "PALM";
-            else if (count === 0) newGesture = "FIST";
-            else if (count === 1 && fingers[0]) newGesture = "POINT";
-            else if (count === 2 && fingers[0] && fingers[1]) newGesture = "PEACE";
+    ctx.fillStyle="#00f2ff";
 
-            if (newGesture !== currentGesture) {
-                currentGesture = newGesture;
-                if (newGesture === "PALM") {
-                    gestureText.innerText = "HEART";
-                    generateHeart();
-                } else if (newGesture === "FIST") {
-                    gestureText.innerText = "SATURN";
-                    generateSaturn();
-                } else if (newGesture === "POINT") {
-                    gestureText.innerText = "I LOVE YOU";
-                    generateText("ILOVEYOU");
-                } else if (newGesture === "PEACE") {
-                    gestureText.innerText = "SEE YOU";
-                    generateText("SEEYOU");
-                }
-            }
-        }
+    particles.forEach(p=>{
+        p.update();
+        p.draw();
+    });
 
-        function render() {
-            detect();
+    requestAnimationFrame(loop);
+}
 
-            // Background Fade
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+init();
+</script>
 
-            // Subtle Bokeh
-            ctx.globalAlpha = 0.3;
-            bokehCircles.forEach(b => {
-                const grad = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
-                grad.addColorStop(0, '#001a1a');
-                grad.addColorStop(1, 'transparent');
-                ctx.fillStyle = grad;
-                ctx.beginPath();
-                ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
-                ctx.fill();
-                b.y -= b.v;
-                if (b.y + b.r < 0) b.y = canvas.height + b.r;
-            });
-            ctx.globalAlpha = 1.0;
-
-            // Particles
-            ctx.globalCompositeOperation = 'lighter';
-            const scale = 1.0 + (Math.abs(handZ) * 2.5); // Depth scaling
-            
-            for (let i = 0; i < particles.length; i++) {
-                particles[i].update(scale);
-                particles[i].draw();
-            }
-
-            requestAnimationFrame(render);
-        }
-
-        init();
-    </script>
 </body>
 </html>
