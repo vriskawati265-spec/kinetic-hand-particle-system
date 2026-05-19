@@ -1,38 +1,21 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>TikTok Neon Hands</title>
+<title>Neon Hand Fix</title>
 
 <style>
-body {
-  margin:0;
-  background:black;
-  overflow:hidden;
-}
-
-canvas{
-  position:fixed;
-  top:0;
-  left:0;
-}
-
+body{margin:0;background:#000;overflow:hidden}
+canvas{position:fixed;top:0;left:0}
 #ui{
-  position:absolute;
-  top:20px;
-  left:20px;
-  color:#00f2ff;
-  font-family:Arial;
+  position:fixed;top:20px;left:20px;
+  color:#00f2ff;font-family:Arial;
   text-shadow:0 0 10px #00f2ff;
 }
-
-video{
-  position:fixed;
-  bottom:20px;
-  right:20px;
-  width:180px;
-  border-radius:12px;
+#cam{
+  position:fixed;bottom:20px;right:20px;
+  width:160px;border-radius:12px;
   transform:scaleX(-1);
   border:2px solid #00f2ff;
 }
@@ -41,94 +24,150 @@ video{
 
 <body>
 
-<div id="ui">INITIALIZING...</div>
-<video id="video" autoplay playsinline></video>
+<div id="ui">🔄 LOADING...</div>
+<video id="cam" autoplay playsinline></video>
 <canvas id="c"></canvas>
 
 <script type="module">
+
 import { HandLandmarker, FilesetResolver }
 from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs";
 
+const ui = document.getElementById("ui");
+const video = document.getElementById("cam");
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
-
-const ui = document.getElementById("ui");
-const video = document.getElementById("video");
 
 canvas.width = innerWidth;
 canvas.height = innerHeight;
 
-/* ================= PARTICLES ================= */
-const COUNT = 2500;
+/* ========= PARTIKEL SIMPLE ========= */
+const PCOUNT = 1500;
+const ps=[];
 
-const particles = [];
+for(let i=0;i<PCOUNT;i++){
+  ps.push({
+    x:Math.random()*innerWidth,
+    y:Math.random()*innerHeight,
+    vx:0,vy:0,
+    tx:0,ty:0
+  });
+}
 
-class P{
-  constructor(){
-    this.x = Math.random()*canvas.width;
-    this.y = Math.random()*canvas.height;
-    this.vx=0;
-    this.vy=0;
-    this.tx=this.x;
-    this.ty=this.y;
-  }
-
-  update(){
-    let dx = this.tx - this.x;
-    let dy = this.ty - this.y;
-
-    this.vx += dx * 0.02;
-    this.vy += dy * 0.02;
-
-    this.vx *= 0.85;
-    this.vy *= 0.85;
-
-    this.x += this.vx;
-    this.y += this.vy;
-  }
-
-  draw(){
-    ctx.fillStyle="#00f2ff";
-    ctx.shadowBlur=12;
-    ctx.shadowColor="#00f2ff";
-    ctx.fillRect(this.x,this.y,2,2);
+function setCircle(){
+  for(let i=0;i<ps.length;i++){
+    let a=i/ps.length*Math.PI*2;
+    ps[i].tx = innerWidth/2 + Math.cos(a)*200;
+    ps[i].ty = innerHeight/2 + Math.sin(a)*200;
   }
 }
 
-for(let i=0;i<COUNT;i++) particles.push(new P());
+function update(){
+  ctx.fillStyle="rgba(0,0,0,0.25)";
+  ctx.fillRect(0,0,innerWidth,innerHeight);
 
-function assign(targets){
-  for(let i=0;i<particles.length;i++){
-    let t = targets[i % targets.length];
-    particles[i].tx = t.x + canvas.width/2;
-    particles[i].ty = t.y + canvas.height/2;
+  ctx.fillStyle="#00f2ff";
+  ctx.shadowBlur=10;
+  ctx.shadowColor="#00f2ff";
+
+  for(let p of ps){
+    let dx=p.tx-p.x;
+    let dy=p.ty-p.y;
+
+    p.vx+=dx*0.02;
+    p.vy+=dy*0.02;
+
+    p.vx*=0.85;
+    p.vy*=0.85;
+
+    p.x+=p.vx;
+    p.y+=p.vy;
+
+    ctx.fillRect(p.x,p.y,2,2);
+  }
+
+  requestAnimationFrame(update);
+}
+
+/* ========= CAMERA SAFE ========= */
+async function startCamera(){
+  try{
+    ui.innerText="🔄 CAMERA...";
+    const stream = await navigator.mediaDevices.getUserMedia({video:true});
+    video.srcObject = stream;
+    await video.play();
+    ui.innerText="🟢 CAMERA OK";
+
+  }catch(e){
+    ui.innerText="🔴 CAMERA BLOCKED";
+    console.log(e);
   }
 }
 
-/* ================= SHAPES ================= */
+/* ========= AI SAFE INIT ========= */
+let hand;
 
-function circle(){
-  const pts=[];
-  for(let i=0;i<COUNT;i++){
-    let a = i/COUNT * Math.PI*2;
-    pts.push({
-      x: Math.cos(a)*200,
-      y: Math.sin(a)*200
+async function startAI(){
+  try{
+    ui.innerText="🔄 LOADING AI...";
+
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
+    );
+
+    hand = await HandLandmarker.createFromOptions(vision,{
+      baseOptions:{
+        modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+      },
+      runningMode:"VIDEO",
+      numHands:1
     });
+
+    ui.innerText="🟢 READY";
+
+  }catch(e){
+    ui.innerText="⚠️ AI ERROR (fallback mode)";
+    console.log(e);
   }
-  assign(pts);
 }
 
-function heart(){
-  const pts=[];
-  for(let i=0;i<COUNT;i++){
-    let t=i/COUNT*Math.PI*2;
-    pts.push({
-      x:16*Math.pow(Math.sin(t),3)*12,
-      y:-(13*Math.cos(t)-5*Math.cos(2*t))*12
-    });
+/* ========= DETECT ========= */
+let last=0;
+
+function detect(){
+  if(!hand) return;
+
+  let now=performance.now();
+  if(now-last<50) return;
+  last=now;
+
+  const res = hand.detectForVideo(video, now);
+  if(!res.landmarks?.length) return;
+
+  const fingers=[8,12,16,20]
+  .map(i=>res.landmarks[0][i].y < res.landmarks[0][i-2].y);
+
+  if(fingers.filter(Boolean).length>=4){
+    setCircle();
   }
-  assign(pts);
 }
 
-/*
+/* ========= LOOP ========= */
+function loop(){
+  detect();
+  update();
+  requestAnimationFrame(loop);
+}
+
+/* ========= RUN ========= */
+(async()=>{
+  await startCamera();
+  await startAI();
+  setCircle();
+  loop();
+})();
+</script>
+
+</body>
+</html>
