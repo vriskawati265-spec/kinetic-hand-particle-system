@@ -1,38 +1,43 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Neon Hand Fix</title>
+<title>Neon Hand FIX FULL</title>
 
 <style>
 body{margin:0;background:#000;overflow:hidden}
 canvas{position:fixed;top:0;left:0}
+
 #ui{
   position:fixed;top:20px;left:20px;
   color:#00f2ff;font-family:Arial;
   text-shadow:0 0 10px #00f2ff;
+  z-index:10;
 }
+
 #cam{
   position:fixed;bottom:20px;right:20px;
   width:160px;border-radius:12px;
   transform:scaleX(-1);
   border:2px solid #00f2ff;
+  z-index:10;
 }
 </style>
 </head>
 
 <body>
 
-<div id="ui">🔄 LOADING...</div>
+<div id="ui">🔄 INIT...</div>
 <video id="cam" autoplay playsinline></video>
 <canvas id="c"></canvas>
 
 <script type="module">
 
 import { HandLandmarker, FilesetResolver }
-from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs";
+from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.mjs";
 
+/* ===== UI ===== */
 const ui = document.getElementById("ui");
 const video = document.getElementById("cam");
 const canvas = document.getElementById("c");
@@ -41,41 +46,60 @@ const ctx = canvas.getContext("2d");
 canvas.width = innerWidth;
 canvas.height = innerHeight;
 
-/* ========= PARTIKEL SIMPLE ========= */
-const PCOUNT = 1500;
-const ps=[];
+/* ===== RESIZE SAFE ===== */
+window.addEventListener("resize",()=>{
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+});
+
+/* ===== PARTICLE SYSTEM ===== */
+const PCOUNT = 1200;
+const ps = [];
 
 for(let i=0;i<PCOUNT;i++){
   ps.push({
     x:Math.random()*innerWidth,
     y:Math.random()*innerHeight,
     vx:0,vy:0,
-    tx:0,ty:0
+    tx:innerWidth/2,
+    ty:innerHeight/2
   });
 }
 
-function setCircle(){
-  for(let i=0;i<ps.length;i++){
-    let a=i/ps.length*Math.PI*2;
-    ps[i].tx = innerWidth/2 + Math.cos(a)*200;
-    ps[i].ty = innerHeight/2 + Math.sin(a)*200;
+/* bentuk awal */
+function setIdle(){
+  for(let p of ps){
+    p.tx = innerWidth/2;
+    p.ty = innerHeight/2;
   }
 }
 
+/* bentuk lingkaran */
+function setCircle(){
+  for(let i=0;i<ps.length;i++){
+    let a=i/ps.length*Math.PI*2;
+    ps[i].tx = innerWidth/2 + Math.cos(a)*180;
+    ps[i].ty = innerHeight/2 + Math.sin(a)*180;
+  }
+}
+
+/* ===== RENDER (INI YANG WAJIB HIDUP) ===== */
 function update(){
+
   ctx.fillStyle="rgba(0,0,0,0.25)";
   ctx.fillRect(0,0,innerWidth,innerHeight);
 
   ctx.fillStyle="#00f2ff";
-  ctx.shadowBlur=10;
+  ctx.shadowBlur=15;
   ctx.shadowColor="#00f2ff";
 
   for(let p of ps){
+
     let dx=p.tx-p.x;
     let dy=p.ty-p.y;
 
-    p.vx+=dx*0.02;
-    p.vy+=dy*0.02;
+    p.vx+=dx*0.015;
+    p.vy+=dy*0.015;
 
     p.vx*=0.85;
     p.vy*=0.85;
@@ -89,30 +113,29 @@ function update(){
   requestAnimationFrame(update);
 }
 
-/* ========= CAMERA SAFE ========= */
+/* ===== CAMERA SAFE ===== */
 async function startCamera(){
   try{
-    ui.innerText="🔄 CAMERA...";
+    ui.innerText="📷 CAMERA...";
     const stream = await navigator.mediaDevices.getUserMedia({video:true});
     video.srcObject = stream;
     await video.play();
     ui.innerText="🟢 CAMERA OK";
-
   }catch(e){
     ui.innerText="🔴 CAMERA BLOCKED";
     console.log(e);
   }
 }
 
-/* ========= AI SAFE INIT ========= */
-let hand;
+/* ===== AI SAFE ===== */
+let hand = null;
 
 async function startAI(){
   try{
-    ui.innerText="🔄 LOADING AI...";
+    ui.innerText="🧠 LOADING AI...";
 
     const vision = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm"
     );
 
     hand = await HandLandmarker.createFromOptions(vision,{
@@ -124,47 +147,59 @@ async function startAI(){
       numHands:1
     });
 
-    ui.innerText="🟢 READY";
+    ui.innerText="🟢 AI READY";
 
   }catch(e){
-    ui.innerText="⚠️ AI ERROR (fallback mode)";
+    ui.innerText="⚠️ AI FAILED (fallback mode)";
     console.log(e);
   }
 }
 
-/* ========= DETECT ========= */
+/* ===== DETECT SAFE ===== */
 let last=0;
 
 function detect(){
   if(!hand) return;
+  if(video.readyState < 2) return;
 
   let now=performance.now();
   if(now-last<50) return;
   last=now;
 
-  const res = hand.detectForVideo(video, now);
-  if(!res.landmarks?.length) return;
+  try{
+    const res = hand.detectForVideo(video, now);
 
-  const fingers=[8,12,16,20]
-  .map(i=>res.landmarks[0][i].y < res.landmarks[0][i-2].y);
+    if(!res.landmarks?.length){
+      return;
+    }
 
-  if(fingers.filter(Boolean).length>=4){
-    setCircle();
+    const fingers=[8,12,16,20]
+    .map(i=>res.landmarks[0][i].y < res.landmarks[0][i-2].y);
+
+    if(fingers.filter(Boolean).length>=4){
+      setCircle();
+    }else{
+      setIdle();
+    }
+
+  }catch(e){
+    console.log("detect error",e);
   }
 }
 
-/* ========= LOOP ========= */
+/* ===== LOOP (WAJIB STABIL) ===== */
 function loop(){
   detect();
   update();
   requestAnimationFrame(loop);
 }
 
-/* ========= RUN ========= */
+/* ===== START SAFE ===== */
 (async()=>{
   await startCamera();
   await startAI();
-  setCircle();
+  setIdle();
+  update();
   loop();
 })();
 </script>
